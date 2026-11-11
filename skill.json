@@ -1,0 +1,93 @@
+{
+  "name": "sunmi-t1-bootloop-fixer",
+  "display_name": "Perbaikan Bootloop / Restart Berulang Sunmi T1",
+  "short_name": "sunmi-bootloop",
+  "version": "1.0.0",
+  "language": "id",
+  "category": "device-repair",
+  "author": "Teknisi POS / Tim IT",
+  "description": "Skill untuk diagnosis dan perbaikan bootloop / restart berulang pada Sunmi T1 (MSM8916, Android 6.0.1) yang disebabkan oleh data/modul Chimera Google Play Services (GMS) korup yang memicu system_server crash-loop setiap ~13–20 detik dengan signature 'Service without Chimera impl'.",
+  "knowledge_file": "PROSEDUR-BOOTLOOP-SUNMI-T1.md",
+  "trigger_keywords": [
+    "sunmi", "t1", "bootloop", "restart berulang", "chimera", "system_server",
+    "service without chimera impl", "geofenceprovider", "gms", "google play services",
+    "adb", "pm clear", "pm uninstall", "stuck logo", "layar berkedip"
+  ],
+  "prerequisites": [
+    "PC dengan ADB (platform-tools) terinstal",
+    "Kabel USB data berkualitas",
+    "Port USB 2.0 langsung di PC (bukan hub, bukan port USB 3.0 biru)",
+    "Device Sunmi T1 masih terdeteksi di `adb devices` (status device/unauthorized)"
+  ],
+  "risk_level": "rendah",
+  "requires_factory_reset": false,
+  "data_safe": true,
+  "estimated_time": "1-5 menit (kalau prosedur dikenal), 30+ menit jika diagnosis dari nol",
+  "functions": [
+    {
+      "name": "diagnose_sunmi_t1_bootloop",
+      "description": "Konfirmasi device terdeteksi dan deteksi crash-loop system_server melalui PID yang berganti-ganti",
+      "commands": [
+        "adb devices -l",
+        "adb shell \"ps | grep system_server\"",
+        "adb shell \"logcat -b crash -d | grep -A8 'IN SYSTEM PROCESS' | tail -20\""
+      ],
+      "confirmation_signs": [
+        "PID system_server berubah setiap 13-20 detik",
+        "Log crash berisi 'Service without Chimera impl' + 'IGeofenceProvider.setGeofenceHardware'"
+      ]
+    },
+    {
+      "name": "fix_sunmi_t1_bootloop",
+      "description": "Eksekusi 3 perintah inti pada jendela PackageManager yang hidup untuk mereset modul Chimera dan menghapus trigger geofence provider error",
+      "commands": [
+        "adb shell \"pm uninstall -k --user 0 com.qualcomm.location; pm uninstall -k --user 0 com.qualcomm.location.XT; pm clear com.google.android.gms\""
+      ],
+      "expected_output": "Success | Success | Success",
+      "note": "Semua perintah pm harus dijalankan sekaligus dalam satu eksekusi shell karena jendela PM hanya hidup ±10 detik tiap siklus crash"
+    },
+    {
+      "name": "verify_sunmi_t1_stable",
+      "description": "Verifikasi system_server stabil (PID tidak berubah >25 detik), boot_completed=1, launcher berjalan, dan tidak ada crash baru",
+      "commands": [
+        "adb shell \"ps | grep system_server\"",
+        "adb shell \"uptime; getprop sys.boot_completed; ps | grep -E 'system_server|woyou.launcher'\"",
+        "adb shell \"logcat -b crash -d | grep 'IN SYSTEM PROCESS' | tail -2\""
+      ]
+    },
+    {
+      "name": "prevent_sunmi_t1_recurrence",
+      "description": "Nonaktifkan Play Store permanen sehingga GMS tidak bisa auto-update dan modul Chimera tidak korup kembali",
+      "commands": [
+        "adb shell \"pm uninstall -k --user 0 com.android.vending\""
+      ],
+      "note": "Terkonfirmed: kasus kambuh tepat setelah GMS ter-update. Tanpa com.android.vending, GMS tidak bisa auto-update."
+    },
+    {
+      "name": "restore_sunmi_t1_packages",
+      "description": "Kembalikan package yang dinonaktifkan (hanya setelah memastikan modul Chimera sehat)",
+      "commands": [
+        "adb shell \"cmd package install-existing com.qualcomm.location\"",
+        "adb shell \"cmd package install-existing com.qualcomm.location.XT\"",
+        "adb shell \"cmd package install-existing com.google.android.gms\"",
+        "adb shell \"cmd package install-existing com.android.vending\""
+      ],
+      "warning": "Jangan restore com.qualcomm.location(.XT) / GMS sebelum memastikan modul Chimera sehat, karena bisa memicu crash-loop lagi"
+    }
+  ],
+  "troubleshooting": {
+    "adb_unauthorized": "Regenerate ADB key: hapus %USERPROFILE%\\.android\\adbkey(.pub) -> adb kill-server -> adb start-server. Jika tetap unauthorized tapi koneksi tidak pernah putus, kemungkinan stuck di boot bukan restart.",
+    "pm_is_the_system_running": "Jendela PackageManager belum terbuka. Lakukan polling ulang, tunggu siklus crash berikutnya.",
+    "security_exception": "Shell tidak berhak disable package system. Gunakan pm uninstall -k --user 0 (biasanya diizinkan).",
+    "delete_failed_device_policy_manager": "Package adalah device administrator aktif. Lepas admin via Settings -> Security -> Device administrators.",
+    "unknown_package": "Nama package salah. Cek: adb shell \"pm list packages | grep -i <kata>\"",
+    "fastboot_no_link": "Masalah koneksi fisik. Ganti kabel data / gunakan port USB 2.0 langsung di PC."
+  },
+  "prevention": [
+    "Jangan cabut colokan daya paksa saat POS proses update / pengisian",
+    "Nonaktifkan Play Store permanen: adb shell \"pm uninstall -k --user 0 com.android.vending\"",
+    "Pastikan storage /data lega (>=1 GB) sebelum update aplikasi",
+    "Kalau kambuh: perintah cepat = adb shell pm clear com.google.android.gms"
+  ],
+  "last_reviewed": "2026-11-11"
+}
